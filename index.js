@@ -86,14 +86,10 @@ function createReplaceTask(file, start, end, replaceWith) {
 async function pollMatch(match, content, fileName, doNotAsk) {
   var previewStart = content.substr(0, match.index);
   var previewEnd =  content.substr(match.index + match[0].length, content.length);
-  //console.log(previewStart, previewEnd);
   preview = `Ember.computed(${match[2]}, ${match[1]})`; 
   var diff = jsdiff.diffWords(match[0], preview);
 
-
-
-  // i decided to not show chunks on --dry-run as it will be shown at end anyways
-  if (doNotAsk && !argv["dry-run"]) {
+  if (!doNotAsk) {
     console.log(`file: ${fileName} character: ${match.index}`);
     console.log(/* empty line */);
     diff.forEach(function(part){
@@ -103,12 +99,11 @@ async function pollMatch(match, content, fileName, doNotAsk) {
         part.removed ? 'red' : 'grey';
       process.stderr.write(part.value[color]);
     });
+    // TODO for some reason if you do not add empty line then red part of diff is not preserved on next poll
+    console.log(/* empty line */);
+    console.log(/* empty line */);
   }
 
-
-  // TODO for some reason if you do not add empty line then red part of diff is not preserved on next poll
-  console.log(/* empty line */);
-  console.log(/* empty line */);
 
   if (!doNotAsk) {
     return inquirer
@@ -157,11 +152,11 @@ async function pollFile(fileName, doNotAsk) {
   var match, matches = [], tasks = [];
   var fileContent = fs.readFileSync(fileName).toString();
   
+  regexFormula.lastIndex = 0; // reset regex state for next file
+
   while (match = regexFormula.exec(fileContent)) {
     matches.push(match);
   }
-
-  regexFormula.lastIndex = 0; // reset regex state for next file
 
   while (match = matches.shift()) {
     tasks.push(await pollMatch(match, fileContent, fileName, doNotAsk));
@@ -189,13 +184,12 @@ var poll = inquirer
     if (answer.action == 'Quit') {
       process.exit(0);
     } else if (answer.action == "Review changes") {
-      for (var i = 0; i<=files.length; ++i) {
+      for (var i = 0; i<files.length; ++i) {
         console.log(/* empty line */);
         await pollFile(files[i], false);
       }
     } else {
       for (var i = 0; i<files.length; ++i) {
-        console.log(/* empty line */);
         await pollFile(files[i], true);
       }
     }
@@ -243,6 +237,9 @@ poll.then(function () {
         fs.writeFileSync(newFile, fileContent);
     }
   });
+
+  console.log('Done!');
+  process.exit(0);
 });
 
 // TODO I was thinking about processing in threads but that would be an overkill
@@ -252,3 +249,4 @@ poll.then(function () {
 // TODO i do not like the part on applying changes where i need to filter tasks by a file multiple times,
 //      but this wat i do not consume memory for holding every file content at once
 // TODO i used synchronous filesystem operations only for better readability
+// TODO i am not happy about output files structure
